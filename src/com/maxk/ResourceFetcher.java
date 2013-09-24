@@ -1,6 +1,8 @@
 package com.maxk;
 
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
@@ -8,12 +10,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
-
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.params.HttpConnectionParams;
 
 /**
  * Fetches resources from the web
@@ -77,15 +73,22 @@ public class ResourceFetcher
 		FetchTask fetch = new FetchTask(url) {
 			public InputStream getResource(String url) throws Exception
 			{
-				HttpClient client = new DefaultHttpClient();
-				HttpConnectionParams.setConnectionTimeout(client.getParams(), 10000);
+				URL resourceUrl = new URL(url);
+				HttpURLConnection connection = (HttpURLConnection)resourceUrl.openConnection();
 				
-				HttpResponse response = client.execute(new HttpGet(url));
-				int responseCode = response.getStatusLine().getStatusCode();
+				connection.setConnectTimeout(10000);
+				connection.setRequestMethod("GET");
+				connection.setDoInput(true);
 				
-				if (responseCode == 200) return response.getEntity().getContent();
+				connection.connect();
 				
-				throw new Exception(String.format("Get %s failed with response code %d", url, responseCode));
+				int responseCode = connection.getResponseCode();
+				if (responseCode != 200)
+				{
+					throw new Exception(String.format("GET %s failed with %d response", url, responseCode));
+				}
+						
+				return connection.getInputStream();
 			}
 		};
 		
