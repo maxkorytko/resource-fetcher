@@ -1,4 +1,4 @@
-package test.com.maxk;
+package com.maxk;
 
 import java.io.InputStream;
 import java.util.List;
