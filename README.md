@@ -15,3 +15,6 @@ fetcher.setCallback(this); // the callback will be notified when the resource is
 
 fetcher.quueFetchFromUrl("http://www.apple.com");
 fetcher.queueFetchFromUrl("http://yourhost.com/path/to/image.png");
+
+Execute gradle run to build and run the demo app
+Execute gradle build to build and run tests
