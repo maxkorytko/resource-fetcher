@@ -1,7 +1,7 @@
 Resource-Fetcher
 ================
 
-A simple project implementing a resource fetcher
+A simple Java implementation of fetching files from the web asynchronously.
 
 Resource fetcher allows you to download data from a URL asynchronously.
 
@@ -19,6 +19,8 @@ fetcher.queueFetchFromUrl("http://yourhost.com/path/to/image.png");
 
 How to build and run
 ====================
+
+Requires Java SE 5 to build.
 
 Execute gradle run to build and run the demo app.
 
