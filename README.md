@@ -10,11 +10,16 @@ execution policy by providing an ExecutorService tuned to your needs.
 
 Sample usage:
 
-ResourceFetcher fetcher = new ResourceFetcher(Executores.newCachedThreadPool());
-fetcher.setCallback(this); // the callback will be notified when the resource is finished fetching
+ResourceFetcher fetcher = new ResourceFetcher(Executors.newCachedThreadPool());
 
-fetcher.quueFetchFromUrl("http://www.apple.com");
+fetcher.setCallback(this);
+
+fetcher.queueFetchFromUrl("http://www.apple.com");
 fetcher.queueFetchFromUrl("http://yourhost.com/path/to/image.png");
 
-Execute gradle run to build and run the demo app
-Execute gradle build to build and run tests
+How to build and run
+====================
+
+Execute gradle run to build and run the demo app.
+
+Execute gradle build to build and run tests.
