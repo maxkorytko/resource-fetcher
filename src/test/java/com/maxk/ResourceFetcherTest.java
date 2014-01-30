@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import junit.framework.TestCase;
 
-import com.maxk.ResourceFetcher;
 import com.maxk.ResourceFetcher.ResourceFetcherCallback;
 
 public class ResourceFetcherTest extends TestCase
@@ -32,9 +31,9 @@ public class ResourceFetcherTest extends TestCase
 		}
 		
 		@Override
-		protected FetchTask newFetchFor(final String url)
+		protected ResourceFetchTask newFetchTask(final String url)
 		{
-			return new FetchTask(url) {
+			return new ResourceFetchTask(url) {
 				@Override
 				public InputStream getResource(String url)
 				{

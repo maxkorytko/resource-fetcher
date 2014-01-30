@@ -5,7 +5,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -48,29 +47,18 @@ public class ResourceFetcher
 		if (url == null) return;
 		if (_fetches.containsKey(url)) return;
 		
-		queueFetch(createFetch(url));
-	}
-	
-	private FetchTask createFetch(String url)
-	{
-		FetchTask fetch = newFetchFor(url);
-		
-		if (fetch != null)
-		{
-			fetch.setCallback(_callback);
-		}
-		
-		return fetch;
+		queueFetchTask(newFetchTask(url));
 	}
 	
 	/**
-	 * Creates a concrete FetchTask object, which carries out the actual fetching
+	 * Creates a concrete ResourceFetchTask object, which carries out the actual fetching
 	 * @param url
 	 * @return
 	 */
-	protected FetchTask newFetchFor(final String url)
+	protected ResourceFetchTask newFetchTask(final String url)
 	{
-		FetchTask fetch = new FetchTask(url) {
+		ResourceFetchTask task = new ResourceFetchTask(url) {
+			@Override
 			public InputStream getResource(String url) throws Exception
 			{
 				URL resourceUrl = new URL(url);
@@ -92,39 +80,61 @@ public class ResourceFetcher
 			}
 		};
 		
-		return fetch;
+		return task;
 	}
 	
-	private void queueFetch(final FetchTask fetch)
+	private void queueFetchTask(final ResourceFetchTask task)
 	{
-		if (fetch == null) throw new IllegalArgumentException("fetch");
+		if (task == null) throw new IllegalArgumentException("task");
 		
-		FutureTask<InputStream> task = new FutureTask<InputStream>(fetch) {
-			@Override
-			public boolean cancel (boolean mayInterruptIfRunning)
-			{
-				fetch.cancel();
-				return super.cancel(mayInterruptIfRunning);
-			}
-			
-			@Override
-			protected void done()
-			{
-				super.done();
-				
-				_fetches.remove(fetch._url);
-				if (!isFetching()) notifyFetchedAll();
-			}
-		};
+		FutureTask<?> fetch = new ResourceFetchFutureTask(task);
 		
 		try
 		{
-			_executor.execute(task);
-			_fetches.put(fetch._url, task);
+			_executor.execute(fetch);
+			_fetches.put(task.getUrl(), fetch);
 		}
 		catch (Exception ex)
 		{
-			if (_callback != null) _callback.onFetchResourceFailed(fetch._url);
+			if (_callback != null) _callback.onFetchResourceFailed(task.getUrl());
+		}
+	}
+	
+	private void completeResourceFetch(ResourceFetchFutureTask fetch)
+	{
+		_fetches.remove(fetch.getTask().getUrl());
+		
+		notifyFetchFinished(fetch);
+		notifyAllFetchesFinished();
+	}
+	
+	private void notifyFetchFinished(ResourceFetchFutureTask fetch)
+	{
+		if (fetch.isCancelled()) return;
+		
+		ResourceFetcherCallback callback = _callback;
+		
+		if (callback != null)
+		{
+			try
+			{
+				callback.onFetchedResource(fetch.getTask().getUrl(), fetch.get());
+			}
+			catch (Exception ex)
+			{
+				callback.onFetchResourceFailed(fetch.getTask().getUrl());
+			}
+		}
+	}
+	
+	private void notifyAllFetchesFinished()
+	{
+		if (isFetching()) return;
+		
+		ResourceFetcherCallback callback = _callback;
+		if (callback != null)
+		{
+			callback.onFetchedAllResources();
 		}
 	}
 	
@@ -142,15 +152,6 @@ public class ResourceFetcher
 		return _fetches.size();
 	}
 	
-	private void notifyFetchedAll()
-	{
-		ResourceFetcherCallback callback = _callback;
-		if (callback != null)
-		{
-			callback.onFetchedAllResources();
-		}
-	}
-	
 	/**
 	 * Cancels all queued and executing fetches
 	 */
@@ -160,7 +161,7 @@ public class ResourceFetcher
 		
 		for (Entry<String, Future<?>> entry : _fetches.entrySet())
 		{
-			entry.getValue().cancel(false);
+			entry.getValue().cancel(true);
 		}
 		
 		_fetches.clear();
@@ -172,83 +173,41 @@ public class ResourceFetcher
 	}
 	
 	/**
-	 * A callable task for fetching a resource from a URL
-	 * Supports cancellation
+	 * Manages the life cycle of the resource fetching task (which is encapsulated in the ResourceFetchTask class)
 	 * @author MaxK
 	 *
 	 */
-	public abstract class FetchTask implements Callable<InputStream>
+	private class ResourceFetchFutureTask extends FutureTask<InputStream>
 	{
-		private final String _url;
-		private volatile boolean _isCancelled;
-		private ResourceFetcherCallback _callback;
+		private final ResourceFetchTask _task;
 		
-		public FetchTask(String url)
+		public ResourceFetchFutureTask(ResourceFetchTask task)
 		{
-			if (url == null) throw new IllegalArgumentException("url");
+			super(task);
 			
-			_url = url;
+			if (task == null) throw new IllegalArgumentException("task");
+			
+			_task = task;
 		}
 		
-		/**
-		 * Cancels the task
-		 */
-		public void cancel()
+		public ResourceFetchTask getTask()
 		{
-			_isCancelled = true;
-		}
-		
-		/**
-		 * Returns true if the task has been cancelled
-		 * @return
-		 */
-		public boolean isCancelled()
-		{
-			return _isCancelled;
+			return _task;
 		}
 		
 		@Override
-		public final InputStream call()
+		public boolean cancel(boolean mayInterruptIfRunning)
 		{
-			InputStream resource = null;
+			_task.cancel();
+			return super.cancel(mayInterruptIfRunning);
+		}
+		
+		@Override
+		protected void done()
+		{
+			super.done();
 			
-			try
-			{
-				if (!isCancelled())
-				{
-					resource = getResource(_url);
-					if (!isCancelled()) notifyFetchFinished(resource);
-				}
-			}
-			catch (Exception ex)
-			{
-				notifyFetchFailed();
-			}
-			
-			return resource;
-		}
-		
-		/**
-		 * Obtains a resource from the given URL
-		 * @param url
-		 * @return InputStream of the resource
-		 * @throws Exception when resource fetching fails
-		 */
-		protected abstract InputStream getResource(String url) throws Exception;
-		
-		private void notifyFetchFinished(InputStream data)
-		{
-			if (_callback != null) _callback.onFetchedResource(_url, data);
-		}
-		
-		private void notifyFetchFailed()
-		{
-			if (_callback != null) _callback.onFetchResourceFailed(_url);
-		}
-		
-		private void setCallback(ResourceFetcherCallback callback)
-		{
-			_callback = callback;
+			completeResourceFetch(this);
 		}
 	}
 }
